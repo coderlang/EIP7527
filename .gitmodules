@@ -8,5 +8,5 @@
 	path = lib/clones-with-immutable-args
 	url = https://github.com/wighawag/clones-with-immutable-args
 [submodule "lib/ens-contracts"]
-    path = lib/ens-contracts
-    url = https://github.com/ensdomains/ens-contracts
+	path = lib/ens-contracts
+	url = https://github.com/ensdomains/ens-contracts
