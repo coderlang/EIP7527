@@ -267,5 +267,11 @@ cast send $AGENCY "wrap(address, bytes)(uint256)" $LOCAL_ACCOUNT "0x000000000000
 又比如包装资产后解除包装，命令如下:
 
 ```bash
-cast send $AGENCY "unwrap(address,uint256,bytes)" $LOCAL_ACCOUNT 1 "" --private-key $LOCAL_PRIVATE
+cast send $AGENCY "unwrap(address,uint256,bytes)" $LOCAL_ACCOUNT 1 "0x" --private-key $LOCAL_PRIVATE
+```
+
+
+```bash 
+cast call $APP "totalSupply()(uint256)"
+cast call $APP "getMaxSupply()(uint256)"
 ```

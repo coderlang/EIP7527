@@ -7,16 +7,50 @@ import {IERC7527App} from "../src/interfaces/IERC7527App.sol";
 import {IERC7527Agency, Asset} from "../src/interfaces/IERC7527Agency.sol";
 import {IERC7527Factory, AgencySettings, AppSettings} from "../src/interfaces/IERC7527Factory.sol";
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
+import {DotAgencyNFT} from "../src/DotAgencyNFT.sol";
 
 contract ImplementationScript is Script {
-    function run() public returns (ERC7527Agency agency, ERC7527App app, IERC7527Factory factory) {
+    function run() public returns (ERC7527Agency agency, ERC7527App app, IERC7527Factory factory, DotAgencyNFT dotAgencyNFT) {
         vm.startBroadcast();
         agency = new ERC7527Agency();
         app = new ERC7527App();
         factory = new ERC7527Factory();
+        dotAgencyNFT = new DotAgencyNFT("name", "symbol", msg.sender, address(agency), address(app), address(factory));
         vm.stopBroadcast();
     }
 }
+
+contract DotAgencyNFTScript is Script {
+    function run() public returns (uint256 tokenId, uint256 maxPremium, uint256 premium, uint256 senderBalance, uint256 nftBalance) {
+        // The address of the deployed DotAgencyNFT contract
+        address dotAgencyNFTAddress = 0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8;
+
+        // The address to mint the NFT to
+        address to = msg.sender;
+
+        // Start broadcasting the transaction
+        vm.startBroadcast();
+
+        // Create an instance of the DotAgencyNFT contract
+        DotAgencyNFT dotAgencyNFT = DotAgencyNFT(dotAgencyNFTAddress);
+
+        // Get the maximum premium value to send with the mint transaction
+        maxPremium = dotAgencyNFT.getMaxPremium();
+
+        premium = dotAgencyNFT.getPremium();
+        // Call the mint function
+        tokenId = dotAgencyNFT.mint{value: maxPremium}(to);
+
+        senderBalance = msg.sender.balance;
+
+        // Query the NFT balance of the sender
+        nftBalance = dotAgencyNFT.balanceOf(msg.sender);
+        // Stop broadcasting the transaction
+        vm.stopBroadcast();
+    }
+}
+
+
 
 contract AgenctWithAppScript is Script {
     Asset public asset;
@@ -34,7 +68,7 @@ contract AgenctWithAppScript is Script {
 
         asset = Asset({
             currency: address(0),
-            basePremium: 0.1 ether,
+            basePremium: 1 ether,
             feeRecipient: address(1),
             mintFeePercent: uint16(10),
             burnFeePercent: uint16(10)
