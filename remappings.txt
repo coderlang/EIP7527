@@ -1,3 +1,5 @@
+@ensdomains/buffer/=lib/buffer/
+@ensdomains/ens-contracts/=lib/ens-contracts/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 clones-with-immutable-args/=lib/clones-with-immutable-args/src/
 ds-test/=lib/forge-std/lib/ds-test/src/

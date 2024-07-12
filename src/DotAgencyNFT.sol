@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.26;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "./PremiumFunction.sol";
 import {IERC7527Agency, Asset} from "./interfaces/IERC7527Agency.sol";
 import {IERC7527Factory, AgencySettings, AppSettings} from "./interfaces/IERC7527Factory.sol";
-import "ens-contracts/contracts/registry/ENS.sol"; // Import ENS interface
+import "./SimpleENSRegistry.sol";
+import "./SimpleENSResolver.sol";
 
 contract DotAgencyNFT is ERC721Enumerable, Ownable {
     uint256 private _tokenIdCounter;
@@ -15,11 +16,20 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
     address public agency;
     address public app;
     address public factory;
-    ENS public ens;
+    SimpleENSRegistry public ensRegistry;
+    SimpleENSResolver public ensResolver;
     bytes32 public ensRootNode;
     mapping(uint256 => address) public tokenToWrapAgency;
     mapping(uint256 => string) public tokenIdToEnsName;
     mapping(string => uint256) public ensNameToTokenId;
+    mapping(bytes32 => Commitment) public commitments;
+
+    struct Commitment {
+        address committer;
+        uint256 blockNumber;
+    }
+
+    uint256 public constant COMMITMENT_EXPIRATION = 128;
 
     constructor(
         string memory name_,
@@ -28,7 +38,8 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         address agency_,
         address app_,
         address factory_,
-        address ens_,
+        address ensRegistry_,
+        address ensResolver_,
         bytes32 ensRootNode_
     ) ERC721(name_, symbol_) Ownable(initialOwner_) {
         deployBlock = block.number;
@@ -37,12 +48,31 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         agency = agency_;
         app = app_;
         factory = factory_;
-        ens = ENS(ens_);
+        ensRegistry = SimpleENSRegistry(ensRegistry_);
+        ensResolver = SimpleENSResolver(ensResolver_);
         ensRootNode = ensRootNode_;
     }
 
-    // Function to mint a new token with premium transfer and ENS name
-    function mint(address to, string memory ensName) public payable onlyOwner returns (uint256) {
+    // Function to commit to an ENS name
+    function commitENSName(bytes32 commitment) public {
+        Commitment memory existingCommitment = commitments[commitment];
+
+        if (existingCommitment.committer != address(0)) {
+            require(block.number > existingCommitment.blockNumber + COMMITMENT_EXPIRATION, "Commitment still valid");
+        }
+
+        commitments[commitment] = Commitment({committer: msg.sender, blockNumber: block.number});
+    }
+
+    // Function to mint a new token with premium transfer and reveal ENS name
+    function mint(address to, string memory ensName, bytes32 salt) public payable returns (uint256) {
+        bytes32 commitment = keccak256(abi.encodePacked(to, ensName, salt));
+        Commitment memory committed = commitments[commitment];
+
+        require(committed.committer != address(0), "Invalid commitment");
+        require(committed.committer == msg.sender, "Caller is not the committer");
+        require(block.number <= committed.blockNumber + COMMITMENT_EXPIRATION, "Commitment has expired");
+
         require(ensNameToTokenId[ensName] == 0, "ENS name already exists");
 
         uint256 currentBlock = block.number;
@@ -57,11 +87,17 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         ensNameToTokenId[ensName] = tokenId;
         tokenIdToEnsName[tokenId] = ensName;
 
-        // Register ENS name
+        // Register ENS name and set subnode owner
         bytes32 label = keccak256(abi.encodePacked(ensName));
         bytes32 node = keccak256(abi.encodePacked(ensRootNode, label));
-        ens.setSubnodeOwner(ensRootNode, label, to);
-        ens.setResolver(node, to);
+        ensRegistry.register(label, address(this)); // Register under the contract's ownership
+        ensRegistry.setSubnodeOwner(ensRootNode, label, address(this)); // Transfer ownership to the contract
+        ensRegistry.transferOwnership(label, to); // Transfer ownership to the actual owner
+        ensRegistry.setResolver(node, address(ensResolver));
+        ensResolver.setAddr(node, to);
+
+        // Mark commitment as used
+        delete commitments[commitment];
 
         // Refund excess payment
         if (msg.value > premium) {
@@ -76,7 +112,7 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         payable(owner()).transfer(address(this).balance);
     }
 
-    function deployWrap(Asset memory asset, uint256 tokenId) public {
+    function deployWrap(Asset memory asset, uint256 tokenId, string memory subdomain) public {
         require(ownerOf(tokenId) != address(0), "ERC721: Token does not exist");
         require(ownerOf(tokenId) == msg.sender, "ERC721: Caller is not the owner");
         require(tokenToWrapAgency[tokenId] == address(0), "ERC721: Token already has an associated agency");
@@ -101,6 +137,15 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         );
 
         tokenToWrapAgency[tokenId] = wrapAgency;
+
+        // Register subdomain
+        string memory ensName = tokenIdToEnsName[tokenId];
+        bytes32 label = keccak256(abi.encodePacked(ensName));
+        bytes32 subdomainLabel = keccak256(abi.encodePacked(subdomain));
+        bytes32 subdomainNode = keccak256(abi.encodePacked(keccak256(abi.encodePacked(ensRootNode, label)), subdomainLabel));
+
+        ensRegistry.setSubnodeOwner(keccak256(abi.encodePacked(ensRootNode, label)), subdomainLabel, wrapAgency);
+        ensResolver.setAddr(subdomainNode, wrapAgency);
     }
 
     function getWrap(uint256 tokenId) public view returns (address) {

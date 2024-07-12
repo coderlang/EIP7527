@@ -8,14 +8,40 @@ import {IERC7527Agency, Asset} from "../src/interfaces/IERC7527Agency.sol";
 import {IERC7527Factory, AgencySettings, AppSettings} from "../src/interfaces/IERC7527Factory.sol";
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import {DotAgencyNFT} from "../src/DotAgencyNFT.sol";
+import {SimpleENSRegistry} from "../src/SimpleENSRegistry.sol";
+import {SimpleENSResolver} from "../src/SimpleENSResolver.sol";
 
 contract ImplementationScript is Script {
-    function run() public returns (ERC7527Agency agency, ERC7527App app, IERC7527Factory factory, DotAgencyNFT dotAgencyNFT) {
+    function run() public returns (
+        ERC7527Agency agency,
+        ERC7527App app,
+        IERC7527Factory factory,
+        SimpleENSRegistry ensRegistry,
+        SimpleENSResolver ensResolver,
+        DotAgencyNFT dotAgencyNFT
+    ) {
         vm.startBroadcast();
+
         agency = new ERC7527Agency();
         app = new ERC7527App();
         factory = new ERC7527Factory();
-        dotAgencyNFT = new DotAgencyNFT("name", "symbol", msg.sender, address(agency), address(app), address(factory));
+        ensRegistry = new SimpleENSRegistry();
+        ensResolver = new SimpleENSResolver();
+
+        bytes32 ensRootNode = keccak256(abi.encodePacked(bytes32(0), keccak256("eth")));
+
+        dotAgencyNFT = new DotAgencyNFT(
+            "DotAgencyNFT",
+            "DANFT",
+            msg.sender,
+            address(agency),
+            address(app),
+            address(factory),
+            address(ensRegistry),
+            address(ensResolver),
+            ensRootNode
+        );
+
         vm.stopBroadcast();
     }
 }
@@ -23,10 +49,17 @@ contract ImplementationScript is Script {
 contract DotAgencyNFTScript is Script {
     function run() public returns (uint256 tokenId, uint256 maxPremium, uint256 premium, uint256 senderBalance, uint256 nftBalance) {
         // The address of the deployed DotAgencyNFT contract
-        address dotAgencyNFTAddress = 0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8;
+        address dotAgencyNFTAddress = 0x5067457698Fd6Fa1C6964e416b3f42713513B3dD;
 
         // The address to mint the NFT to
         address to = msg.sender;
+
+        // The ENS name and salt
+        string memory ensName = "myensname";
+        bytes32 salt = keccak256(abi.encodePacked("random_salt"));
+
+        // Create a commitment
+        bytes32 commitment = keccak256(abi.encodePacked(to, ensName, salt));
 
         // Start broadcasting the transaction
         vm.startBroadcast();
@@ -34,23 +67,28 @@ contract DotAgencyNFTScript is Script {
         // Create an instance of the DotAgencyNFT contract
         DotAgencyNFT dotAgencyNFT = DotAgencyNFT(dotAgencyNFTAddress);
 
+        // Commit the ENS name
+        dotAgencyNFT.commitENSName(commitment);
+
         // Get the maximum premium value to send with the mint transaction
         maxPremium = dotAgencyNFT.getMaxPremium();
 
+        // Get the current premium value
         premium = dotAgencyNFT.getPremium();
-        // Call the mint function
-        tokenId = dotAgencyNFT.mint{value: maxPremium}(to);
 
+        // Call the mint function
+        tokenId = dotAgencyNFT.mint{value: maxPremium}(to, ensName, salt);
+
+        // Get the sender's balance after minting
         senderBalance = msg.sender.balance;
 
         // Query the NFT balance of the sender
         nftBalance = dotAgencyNFT.balanceOf(msg.sender);
+
         // Stop broadcasting the transaction
         vm.stopBroadcast();
     }
 }
-
-
 
 contract AgenctWithAppScript is Script {
     Asset public asset;
