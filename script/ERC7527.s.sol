@@ -51,9 +51,9 @@ contract PremiumFunctionScript is Script {
 }
 
 contract DotAgencyNFTScript is Script {
-    function run() public returns (uint256 tokenId, uint256 maxPremium, uint256 premium, uint256 blocksSinceDeploy, uint256 deployBlock, address wrapAgency) {
+    function run() public returns (uint256 tokenId, uint256 maxPremium, uint256 premium, address wrapAgency) {
         // The address of the deployed DotAgencyNFT contract
-        address dotAgencyNFTAddress = 0xddE78e6202518FF4936b5302cC2891ec180E8bFf;
+        address dotAgencyNFTAddress = 0xeF31027350Be2c7439C1b0BE022d49421488b72C;
 
         // The address to mint the NFT to
         address to = msg.sender;
@@ -64,11 +64,7 @@ contract DotAgencyNFTScript is Script {
         // Create an instance of the DotAgencyNFT contract
         DotAgencyNFT dotAgencyNFT = DotAgencyNFT(dotAgencyNFTAddress);
 
-        blocksSinceDeploy = dotAgencyNFT.getBlocksSinceDeploy();
-
-        deployBlock = dotAgencyNFT.deployBlock();
-
-        premium = dotAgencyNFT.getPremium(deployBlock);
+        premium = dotAgencyNFT.getPremium();
 
         // Get the maximum premium value to send with the mint transaction
         maxPremium = dotAgencyNFT.getMaxPremium();
@@ -98,14 +94,14 @@ contract AgencyScript is Script {
 
     function setUp() public {
         // 通过地址实例化 ERC7527Agency 合约
-        agency = ERC7527Agency(payable(0x288c3a17Aab23ABeF922A8516537eBbeB9Df60d9));
+        agency = ERC7527Agency(payable(0x80e44760F7F45BE92f5DC49965fc5938b9e0a095));
     }
 
-    function run() public returns (uint256 tokenId) {
+    function runWrap() public returns (uint256 tokenId) {
         vm.startBroadcast();
         address to = msg.sender;
 
-        bytes memory data = abi.encode(1);
+        bytes memory data = abi.encode(2);
 
         uint256 valueToSend = 2 ether;
 
@@ -120,5 +116,27 @@ contract AgencyScript is Script {
         tokenId = abi.decode(result, (uint256));
 
         vm.stopBroadcast();
+    }
+
+    function runUnwrap(uint256 tokenId) public {
+        vm.startBroadcast();
+        address to = msg.sender;
+
+        bytes memory data = abi.encode(tokenId);
+
+        uint256 valueToSend = 0 ether;
+
+        // 直接调用 agency 的 unwrap 函数
+        (bool success, ) = address(agency).call{value: valueToSend}(
+            abi.encodeWithSignature("unwrap(address,uint256,bytes)", to, tokenId, data)
+        );
+
+        require(success, "Unwrap function call failed");
+
+        vm.stopBroadcast();
+    }
+
+    function run() public {
+        runUnwrap(2);
     }
 }

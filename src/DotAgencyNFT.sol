@@ -9,7 +9,6 @@ import {IERC7527Factory, AgencySettings, AppSettings} from "./interfaces/IERC752
 
 contract DotAgencyNFT is ERC721Enumerable, Ownable {
     uint256 public tokenIdCounter;
-    uint256 public deployBlock;
     uint256 public basePremium;
     address public agency;
     address public app;
@@ -24,7 +23,6 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         address app_,
         address factory_
     ) ERC721(name_, symbol_) Ownable(initialOwner_) {
-        deployBlock = block.number;
         basePremium = 1 ether;
         tokenIdCounter = 0;
         agency = agency_;
@@ -86,16 +84,12 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         return tokenToWrapAgency[tokenId];
     }
 
-    function getBlocksSinceDeploy() public view returns (uint256) {
-        return block.number - deployBlock;
-    }
-
     function getPremium(uint256 blocksSinceDeploy) public view returns (uint256) {
         return PremiumFunction.getPremium(blocksSinceDeploy, basePremium);
     }
 
     function getPremium() public view returns (uint256) {
-        return PremiumFunction.getPremium(block.number - deployBlock, basePremium);
+        return PremiumFunction.getPremium(block.number, basePremium);
     }
 
     function getMaxPremium() public view returns (uint256) {

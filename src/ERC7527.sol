@@ -11,95 +11,107 @@ import {ClonesWithImmutableArgs} from "clones-with-immutable-args/ClonesWithImmu
 import {IERC7527App} from "./interfaces/IERC7527App.sol";
 import {IERC7527Agency, Asset} from "./interfaces/IERC7527Agency.sol";
 import {IERC7527Factory, AgencySettings, AppSettings} from "./interfaces/IERC7527Factory.sol";
+import {PremiumFunction} from "./PremiumFunction.sol";
 
 contract ERC7527Agency is IERC7527Agency {
     using Address for address payable;
+    uint256[] private tokenPremiums;
 
     receive() external payable {}
 
-    function iconstructor() external override pure {
-        (, Asset memory _asset,) = getStrategy();
-        require(_asset.basePremium != 0, "LnModule: zero basePremium");
+function iconstructor() external override {
+    (, Asset memory _asset,) = getStrategy();
+    require(_asset.basePremium != 0, "LnModule: zero basePremium");
+}
+
+function unwrap(address to, uint256 tokenId, bytes calldata data) external payable override {
+    (address _app, Asset memory _asset,) = getStrategy();
+    require(_isApprovedOrOwner(_app, msg.sender, tokenId), "LnModule: not owner");
+    IERC7527App(_app).burn(tokenId, data);
+    uint256 _sold = IERC721Enumerable(_app).totalSupply();
+    (uint256 premium, uint256 burnFee) = getUnwrapOracle(abi.encode(_sold));
+    require(tokenPremiums[tokenPremiums.length - 1] == premium, "ERC7527Agency: unwrap invalid");
+    _transfer(address(0), payable(to), premium - burnFee);
+    _transfer(address(0), _asset.feeRecipient, burnFee);
+    tokenPremiums.pop();
+    emit Unwrap(to, tokenId, premium, burnFee);
+}
+
+function wrap(address to, bytes calldata data) external payable override returns (uint256) {
+    (address _app, Asset memory _asset,) = getStrategy();
+    uint256 _sold = IERC721Enumerable(_app).totalSupply();
+    (uint256 premium, uint256 mintFee) = getWrapOracle(abi.encode(_sold));
+    require(msg.value >= premium + mintFee, "ERC7527Agency: insufficient funds");
+    _transfer(address(0), _asset.feeRecipient, mintFee);
+    if (msg.value > premium + mintFee) {
+    _transfer(address(0), payable(msg.sender), msg.value - premium - mintFee);
+    }
+    uint256 id_ = IERC7527App(_app).mint(to, data);
+    require(_sold + 1 == IERC721Enumerable(_app).totalSupply(), "ERC7527Agency: Reentrancy");
+
+    tokenPremiums.push(premium);
+
+    emit Wrap(to, id_, premium, mintFee);
+    return id_;
+}
+
+function getStrategy() public view override returns (address app, Asset memory asset, bytes memory attributeData) {
+    uint256 offset = _getImmutableArgsOffset();
+    address currency;
+    uint256 basePremium_;
+    address payable feeRecipient;
+    uint16 mintFeePercent;
+    uint16 burnFeePercent;
+    assembly {
+        app := shr(0x60, calldataload(add(offset, 0)))
+        currency := shr(0x60, calldataload(add(offset, 20)))
+        basePremium_ := calldataload(add(offset, 40))
+        feeRecipient := shr(0x60, calldataload(add(offset, 72)))
+        mintFeePercent := shr(0xf0, calldataload(add(offset, 92)))
+        burnFeePercent := shr(0xf0, calldataload(add(offset, 94)))
+    }
+    asset = Asset(currency, basePremium_, feeRecipient, mintFeePercent, burnFeePercent);
+    attributeData = "";
+}
+
+function getUnwrapOracle(bytes memory data) public view override returns (uint256 premium, uint256 fee) {
+    require(tokenPremiums.length > 0, "ERC7527Agency: getUnwrapOracle can not allow");
+    premium = tokenPremiums[tokenPremiums.length - 1];
+    (, Asset memory _asset,) = getStrategy();
+    fee = premium * _asset.burnFeePercent / 10000;
+}
+
+function getWrapOracle(bytes memory data) public view override returns (uint256 premium, uint256 fee) {
+    (, Asset memory _asset,) = getStrategy();
+
+    uint256 currentBasePremium;
+    if (tokenPremiums.length > 0) {
+        currentBasePremium = tokenPremiums[tokenPremiums.length - 1];
+    } else {
+        currentBasePremium = _asset.basePremium;
     }
 
-    function unwrap(address to, uint256 tokenId, bytes calldata data) external payable override {
-        (address _app, Asset memory _asset,) = getStrategy();
-        require(_isApprovedOrOwner(_app, msg.sender, tokenId), "LnModule: not owner");
-        IERC7527App(_app).burn(tokenId, data);
-        uint256 _sold = IERC721Enumerable(_app).totalSupply();
-        (uint256 premium, uint256 burnFee) = getUnwrapOracle(abi.encode(_sold));
-        _transfer(address(0), payable(to), premium - burnFee);
-        _transfer(address(0), _asset.feeRecipient, burnFee);
-        emit Unwrap(to, tokenId, premium, burnFee);
-    }
+    premium = PremiumFunction.getPremium(block.number, currentBasePremium);
+    fee = premium * _asset.mintFeePercent / 10000;
+}
 
-    function wrap(address to, bytes calldata data) external payable override returns (uint256) {
-        (address _app, Asset memory _asset,) = getStrategy();
-        uint256 _sold = IERC721Enumerable(_app).totalSupply();
-        (uint256 premium, uint256 mintFee) = getWrapOracle(abi.encode(_sold));
-        require(msg.value >= premium + mintFee, "ERC7527Agency: insufficient funds");
-        _transfer(address(0), _asset.feeRecipient, mintFee);
-        if (msg.value > premium + mintFee) {
-            _transfer(address(0), payable(msg.sender), msg.value - premium - mintFee);
-        }
-        uint256 id_ = IERC7527App(_app).mint(to, data);
-        require(_sold + 1 == IERC721Enumerable(_app).totalSupply(), "ERC7527Agency: Reentrancy");
-        emit Wrap(to, id_, premium, mintFee);
-        return id_;
+function _transfer(address currency, address recipient, uint256 premium) internal {
+    if (currency == address(0)) {
+        payable(recipient).sendValue(premium);
+    } else {
+        IERC20(currency).transfer(recipient, premium);
     }
+}
 
-    function getStrategy() public pure override returns (address app, Asset memory asset, bytes memory attributeData) {
-        uint256 offset = _getImmutableArgsOffset();
-        address currency;
-        uint256 basePremium;
-        address payable feeRecipient;
-        uint16 mintFeePercent;
-        uint16 burnFeePercent;
-        assembly {
-            app := shr(0x60, calldataload(add(offset, 0)))
-            currency := shr(0x60, calldataload(add(offset, 20)))
-            basePremium := calldataload(add(offset, 40))
-            feeRecipient := shr(0x60, calldataload(add(offset, 72)))
-            mintFeePercent := shr(0xf0, calldataload(add(offset, 92)))
-            burnFeePercent := shr(0xf0, calldataload(add(offset, 94)))
-        }
-        asset = Asset(currency, basePremium, feeRecipient, mintFeePercent, burnFeePercent);
-        attributeData = "";
-    }
-
-    function getUnwrapOracle(bytes memory data) public pure override returns (uint256 premium, uint256 fee) {
-        uint256 input = abi.decode(data, (uint256));
-        (, Asset memory _asset,) = getStrategy();
-        premium = _asset.basePremium + input * _asset.basePremium / 100;
-        fee = premium * _asset.burnFeePercent / 10000;
-    }
-
-    function getWrapOracle(bytes memory data) public pure override returns (uint256 premium, uint256 fee) {
-        uint256 input = abi.decode(data, (uint256));
-        (, Asset memory _asset,) = getStrategy();
-        premium = _asset.basePremium + input * _asset.basePremium / 100;
-        fee = premium * _asset.mintFeePercent / 10000;
-    }
-
-    function _transfer(address currency, address recipient, uint256 premium) internal {
-        if (currency == address(0)) {
-            payable(recipient).sendValue(premium);
-        } else {
-            IERC20(currency).transfer(recipient, premium);
-        }
-    }
-
-    function _isApprovedOrOwner(address app, address spender, uint256 tokenId) internal view virtual returns (bool) {
-        IERC721Enumerable _app = IERC721Enumerable(app);
-        address _owner = _app.ownerOf(tokenId);
-        return (spender == _owner || _app.isApprovedForAll(_owner, spender) || _app.getApproved(tokenId) == spender);
-    }
-    /// @return offset The offset of the packed immutable args in calldata
+function _isApprovedOrOwner(address app, address spender, uint256 tokenId) internal view virtual returns (bool) {
+    IERC721Enumerable _app = IERC721Enumerable(app);
+    address _owner = _app.ownerOf(tokenId);
+    return (spender == _owner || _app.isApprovedForAll(_owner, spender) || _app.getApproved(tokenId) == spender);
+}
 
     function _getImmutableArgsOffset() internal pure returns (uint256 offset) {
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-            offset := sub(calldatasize(), add(shr(240, calldataload(sub(calldatasize(), 2))), 2))
+    assembly {
+        offset := sub(calldatasize(), add(shr(240, calldataload(sub(calldatasize(), 2))), 2))
         }
     }
 }
