@@ -8,16 +8,12 @@ import {IERC7527Agency, Asset} from "../src/interfaces/IERC7527Agency.sol";
 import {IERC7527Factory, AgencySettings, AppSettings} from "../src/interfaces/IERC7527Factory.sol";
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import {DotAgencyNFT} from "../src/DotAgencyNFT.sol";
-import {SimpleENSRegistry} from "../src/SimpleENSRegistry.sol";
-import {SimpleENSResolver} from "../src/SimpleENSResolver.sol";
 
 contract ImplementationScript is Script {
     function run() public returns (
         ERC7527Agency agency,
         ERC7527App app,
         IERC7527Factory factory,
-        SimpleENSRegistry ensRegistry,
-        SimpleENSResolver ensResolver,
         DotAgencyNFT dotAgencyNFT
     ) {
         vm.startBroadcast();
@@ -25,10 +21,6 @@ contract ImplementationScript is Script {
         agency = new ERC7527Agency();
         app = new ERC7527App();
         factory = new ERC7527Factory();
-        ensRegistry = new SimpleENSRegistry();
-        ensResolver = new SimpleENSResolver();
-
-        bytes32 ensRootNode = keccak256(abi.encodePacked(bytes32(0), keccak256("eth")));
 
         dotAgencyNFT = new DotAgencyNFT(
             "DotAgencyNFT",
@@ -36,10 +28,7 @@ contract ImplementationScript is Script {
             msg.sender,
             address(agency),
             address(app),
-            address(factory),
-            address(ensRegistry),
-            address(ensResolver),
-            ensRootNode
+            address(factory)
         );
 
         vm.stopBroadcast();
@@ -49,17 +38,10 @@ contract ImplementationScript is Script {
 contract DotAgencyNFTScript is Script {
     function run() public returns (uint256 tokenId, uint256 maxPremium, uint256 premium, uint256 senderBalance, uint256 nftBalance) {
         // The address of the deployed DotAgencyNFT contract
-        address dotAgencyNFTAddress = 0x5067457698Fd6Fa1C6964e416b3f42713513B3dD;
+        address dotAgencyNFTAddress = 0xc96304e3c037f81dA488ed9dEa1D8F2a48278a75;
 
         // The address to mint the NFT to
         address to = msg.sender;
-
-        // The ENS name and salt
-        string memory ensName = "myensname";
-        bytes32 salt = keccak256(abi.encodePacked("random_salt"));
-
-        // Create a commitment
-        bytes32 commitment = keccak256(abi.encodePacked(to, ensName, salt));
 
         // Start broadcasting the transaction
         vm.startBroadcast();
@@ -67,30 +49,32 @@ contract DotAgencyNFTScript is Script {
         // Create an instance of the DotAgencyNFT contract
         DotAgencyNFT dotAgencyNFT = DotAgencyNFT(dotAgencyNFTAddress);
 
-        // Commit the ENS name
-        dotAgencyNFT.commitENSName(commitment);
-
         // Get the maximum premium value to send with the mint transaction
-        maxPremium = dotAgencyNFT.getMaxPremium();
+        maxPremium = dotAgencyNFT.deployBlock();
 
         // Get the current premium value
         premium = dotAgencyNFT.getPremium();
 
-        // Call the mint function
-        tokenId = dotAgencyNFT.mint{value: maxPremium}(to, ensName, salt);
 
-        // Get the sender's balance after minting
-        senderBalance = msg.sender.balance;
 
-        // Query the NFT balance of the sender
-        nftBalance = dotAgencyNFT.balanceOf(msg.sender);
+        // Call the mint function (commented out for demonstration purposes)
+        //        tokenId = dotAgencyNFT.mint{value: maxPremium}(to);
+        //        console.log("Token ID:", tokenId);
+        //
+        //        // Get the sender's balance after minting
+        //        senderBalance = msg.sender.balance;
+        //        console.log("Sender Balance:", senderBalance);
+        //
+        //        // Query the NFT balance of the sender
+        //        nftBalance = dotAgencyNFT.balanceOf(msg.sender);
+        //        console.log("NFT Balance:", nftBalance);
 
         // Stop broadcasting the transaction
         vm.stopBroadcast();
     }
 }
 
-contract AgenctWithAppScript is Script {
+contract AgencyWithAppScript is Script {
     Asset public asset;
     AgencySettings public agencySettings;
     AppSettings public appSettings;
@@ -110,13 +94,13 @@ contract AgenctWithAppScript is Script {
             feeRecipient: address(1),
             mintFeePercent: uint16(10),
             burnFeePercent: uint16(10)
-        });
+            });
 
         agencySettings = AgencySettings({
-            implementation: payable(agency),
-            asset: asset,
-            immutableData: bytes(""),
-            initData: bytes("")
+        implementation: payable(agency),
+    asset: asset,
+    immutableData: bytes(""),
+    initData: bytes("")
         });
 
         appSettings = AppSettings({implementation: app, immutableData: bytes(""), initData: bytes("")});
