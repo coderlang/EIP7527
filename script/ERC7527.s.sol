@@ -9,16 +9,19 @@ import {IERC7527Factory, AgencySettings, AppSettings} from "../src/interfaces/IE
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
 import {DotAgencyNFT} from "../src/DotAgencyNFT.sol";
 import {PremiumFunction} from "../src/PremiumFunction.sol";
+import "../src/WrapCoin.sol";
 
 contract ImplementationScript is Script {
     function run() public returns (
         ERC7527Agency agency,
         ERC7527App app,
         IERC7527Factory factory,
-        DotAgencyNFT dotAgencyNFT
+        DotAgencyNFT dotAgencyNFT,
+        WrapCoin wrapCoin
     ) {
         vm.startBroadcast();
 
+        wrapCoin = new WrapCoin("WrapCoin", "WRAP");
         agency = new ERC7527Agency();
         app = new ERC7527App();
         factory = new ERC7527Factory();
@@ -29,13 +32,13 @@ contract ImplementationScript is Script {
             msg.sender,
             address(agency),
             address(app),
-            address(factory)
+            address(factory),
+            address(wrapCoin)
         );
 
         vm.stopBroadcast();
     }
 }
-
 
 contract PremiumFunctionScript is Script {
     function run() public returns (uint256[] memory premiums) {
@@ -51,9 +54,9 @@ contract PremiumFunctionScript is Script {
 }
 
 contract DotAgencyNFTScript is Script {
-    function run() public returns (uint256 tokenId, uint256 maxPremium, uint256 premium, address wrapAgency) {
+    function run() public returns (uint256 tokenId, uint256 maxPremium, address wrapAgency) {
         // The address of the deployed DotAgencyNFT contract
-        address dotAgencyNFTAddress = 0xeF31027350Be2c7439C1b0BE022d49421488b72C;
+        address dotAgencyNFTAddress = 0xFE5f411481565fbF70D8D33D992C78196E014b90;
 
         // The address to mint the NFT to
         address to = msg.sender;
@@ -63,8 +66,6 @@ contract DotAgencyNFTScript is Script {
 
         // Create an instance of the DotAgencyNFT contract
         DotAgencyNFT dotAgencyNFT = DotAgencyNFT(dotAgencyNFTAddress);
-
-        premium = dotAgencyNFT.getPremium();
 
         // Get the maximum premium value to send with the mint transaction
         maxPremium = dotAgencyNFT.getMaxPremium();
@@ -94,7 +95,7 @@ contract AgencyScript is Script {
 
     function setUp() public {
         // 通过地址实例化 ERC7527Agency 合约
-        agency = ERC7527Agency(payable(0x80e44760F7F45BE92f5DC49965fc5938b9e0a095));
+        agency = ERC7527Agency(payable(0x3C15538ED063e688c8DF3d571Cb7a0062d2fB18D));
     }
 
     function runWrap() public returns (uint256 tokenId) {
