@@ -8,7 +8,7 @@ import {IERC7527Agency, Asset} from "./interfaces/IERC7527Agency.sol";
 import {IERC7527Factory, AgencySettings, AppSettings} from "./interfaces/IERC7527Factory.sol";
 
 contract DotAgencyNFT is ERC721Enumerable, Ownable {
-    uint256 private _tokenIdCounter;
+    uint256 public tokenIdCounter;
     uint256 public deployBlock;
     uint256 public basePremium;
     address public agency;
@@ -26,7 +26,7 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
     ) ERC721(name_, symbol_) Ownable(initialOwner_) {
         deployBlock = block.number;
         basePremium = 1 ether;
-        _tokenIdCounter = 0;
+        tokenIdCounter = 0;
         agency = agency_;
         app = app_;
         factory = factory_;
@@ -34,12 +34,11 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
 
     // Function to mint a new token with premium transfer
     function mint(address to) public payable returns (uint256) {
-        uint256 currentBlock = block.number;
-        uint256 premium = PremiumFunction.getPremium(currentBlock - deployBlock, basePremium);
+        uint256 premium = getPremium();
         require(msg.value >= premium, "Insufficient funds to cover the premium");
 
-        _tokenIdCounter++;
-        uint256 tokenId = _tokenIdCounter;
+        tokenIdCounter++;
+        uint256 tokenId = tokenIdCounter;
         _mint(to, tokenId);
 
         // Refund excess payment
@@ -61,10 +60,10 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         require(tokenToWrapAgency[tokenId] == address(0), "ERC721: Token already has an associated agency");
 
         AgencySettings memory agencySettings = AgencySettings({
-        implementation: payable(agency),
-    asset: asset,
-    immutableData: bytes(""),
-    initData: bytes("")
+            implementation: payable(agency),
+            asset: asset,
+            immutableData: bytes(""),
+            initData: bytes("")
         });
 
         AppSettings memory appSettings = AppSettings({
@@ -85,6 +84,14 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
     function getWrap(uint256 tokenId) public view returns (address) {
         require(ownerOf(tokenId) != address(0), "ERC721: Token does not exist");
         return tokenToWrapAgency[tokenId];
+    }
+
+    function getBlocksSinceDeploy() public view returns (uint256) {
+        return block.number - deployBlock;
+    }
+
+    function getPremium(uint256 blocksSinceDeploy) public view returns (uint256) {
+        return PremiumFunction.getPremium(blocksSinceDeploy, basePremium);
     }
 
     function getPremium() public view returns (uint256) {
