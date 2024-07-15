@@ -17,7 +17,8 @@ contract ImplementationScript is Script {
         ERC7527App app,
         IERC7527Factory factory,
         DotAgencyNFT dotAgencyNFT,
-        WrapCoin wrapCoin
+        WrapCoin wrapCoin,
+        address wrapAgency
     ) {
         vm.startBroadcast();
 
@@ -36,27 +37,29 @@ contract ImplementationScript is Script {
             address(wrapCoin)
         );
 
+        address to = msg.sender;
+        uint256 maxPremium = dotAgencyNFT.getMaxPremium();
+        uint256 tokenId = dotAgencyNFT.mint{value: maxPremium}(to);
+        Asset memory asset = Asset({
+            currency: address(0),
+            basePremium: 1 ether,
+            feeRecipient: address(0x70997970C51812dc3A010C7d01b50e0d17dc79C8),
+            mintFeePercent: uint16(5),
+            burnFeePercent: uint16(5)
+            });
+
+
+        dotAgencyNFT.deployWrap(asset, tokenId);
+        wrapAgency = dotAgencyNFT.getWrap(tokenId);
+
         vm.stopBroadcast();
-    }
-}
-
-contract PremiumFunctionScript is Script {
-    function run() public returns (uint256[] memory premiums) {
-        uint256 basePremium = 1 ether;
-        uint256[] memory results = new uint256[](81);
-
-        for (uint256 i = 0; i <= 80; i++) {
-            results[i] = PremiumFunction.getPremium(i, basePremium);
-        }
-
-        return results;
     }
 }
 
 contract DotAgencyNFTScript is Script {
     function run() public returns (uint256 tokenId, uint256 maxPremium, address wrapAgency) {
         // The address of the deployed DotAgencyNFT contract
-        address dotAgencyNFTAddress = 0x5081a39b8A5f0E35a8D959395a630b68B74Dd30f;
+        address dotAgencyNFTAddress = 0x6e374a88Ca77981Ca2c6502F164ADb8ACe9f7BB6;
 
         // The address to mint the NFT to
         address to = msg.sender;
@@ -90,19 +93,22 @@ contract DotAgencyNFTScript is Script {
     }
 }
 
-contract AgencyScript is Script {
+contract AgencyWrapScript is Script {
     ERC7527Agency public agency;
 
     function setUp() public {
         // 通过地址实例化 ERC7527Agency 合约
-        agency = ERC7527Agency(payable(0x3C15538ED063e688c8DF3d571Cb7a0062d2fB18D));
+        agency = ERC7527Agency(payable(0x147D1dB74c2878E08a6Ac648818421b3d77e90E3));
     }
 
-    function runWrap() public returns (uint256 tokenId) {
+    function run() public returns(uint256 totalSupply) {
         vm.startBroadcast();
+        uint256 tokenId = 1;
         address to = msg.sender;
+        (address _app, Asset memory _asset,) = agency.getStrategy();
+        totalSupply = IERC721Enumerable(_app).totalSupply();
 
-        bytes memory data = abi.encode(2);
+        bytes memory data = abi.encode(tokenId);
 
         uint256 valueToSend = 2 ether;
 
@@ -118,9 +124,22 @@ contract AgencyScript is Script {
 
         vm.stopBroadcast();
     }
+}
 
-    function runUnwrap(uint256 tokenId) public {
+
+contract AgencyUnwrapScript is Script {
+    ERC7527Agency public agency;
+
+    function setUp() public {
+        // 通过地址实例化 ERC7527Agency 合约
+        agency = ERC7527Agency(payable(0x147D1dB74c2878E08a6Ac648818421b3d77e90E3));
+    }
+
+
+    function run() public returns(uint256 totalSupply) {
         vm.startBroadcast();
+
+        uint256 tokenId = 1;
         address to = msg.sender;
 
         bytes memory data = abi.encode(tokenId);
@@ -134,10 +153,9 @@ contract AgencyScript is Script {
 
         require(success, "Unwrap function call failed");
 
-        vm.stopBroadcast();
-    }
+        (address _app, Asset memory _asset,) = agency.getStrategy();
+        totalSupply = IERC721Enumerable(_app).totalSupply();
 
-    function run() public {
-        runUnwrap(2);
+        vm.stopBroadcast();
     }
 }

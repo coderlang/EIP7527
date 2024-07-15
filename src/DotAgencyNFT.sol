@@ -9,7 +9,7 @@ import {IERC7527Factory, AgencySettings, AppSettings} from "./interfaces/IERC752
 import "./WrapCoin.sol";
 
 contract DotAgencyNFT is ERC721Enumerable, Ownable {
-    uint256 public tokenIdCounter;
+    uint256 public lastMintNumber;
     uint256 public basePremium;
     address public agency;
     address public app;
@@ -32,7 +32,7 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         address wrapCoinAddress_
     ) ERC721(name_, symbol_) Ownable(initialOwner_) {
         basePremium = 1 ether;
-        tokenIdCounter = 0;
+        lastMintNumber = 0;
         agency = agency_;
         app = app_;
         factory = factory_;
@@ -43,8 +43,7 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         uint256 premium = getPremium();
         require(msg.value >= premium, "Insufficient funds to cover the premium");
 
-        tokenIdCounter++;
-        uint256 tokenId = tokenIdCounter;
+        uint256 tokenId = ++lastMintNumber;
         _mint(to, tokenId);
 
         if (msg.value > premium) {
@@ -58,12 +57,16 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
             wrapCoin.mint(premiumDAOVault, wrapCoinAmount * 19_661 >> 16);
             wrapCoin.mint(swapLPRewardVault, wrapCoinAmount * 6_554 >> 16);
             wrapCoin.mint(NFTStakingRewardVault, wrapCoinAmount * 26_215 >> 16);
-            wrapCoinAmount = wrapCoinAmount * 9995/10000;
+            wrapCoinAmount = wrapCoinGrowthOracle();
         }
 
         return tokenId;
     }
 
+    function wrapCoinGrowthOracle() public view returns (uint256 hubGrowth) {
+        hubGrowth = lastMintNumber * 79_224_228_741_961_878_833_877_895_414_568_059_920_804_079_641
+        / 0x0000de0b6b3a7640000000000000000000000000000;
+    }
     function withdraw() public onlyOwner {
         payable(owner()).transfer(address(this).balance);
     }
@@ -74,10 +77,10 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         require(tokenToWrapAgency[tokenId] == address(0), "ERC721: Token already has an associated agency");
 
         AgencySettings memory agencySettings = AgencySettings({
-        implementation: payable(agency),
-    asset: asset,
-    immutableData: bytes(""),
-    initData: bytes("")
+            implementation: payable(agency),
+            asset: asset,
+            immutableData: bytes(""),
+            initData: bytes("")
         });
 
         AppSettings memory appSettings = AppSettings({

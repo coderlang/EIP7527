@@ -15,7 +15,15 @@ import {PremiumFunction} from "./PremiumFunction.sol";
 
 contract ERC7527Agency is IERC7527Agency {
     using Address for address payable;
-    uint256[] private tokenPremiums;
+
+    struct Info {
+        uint256 premium;
+        uint256 reward;
+    }
+
+    uint256 public lastTokenId;
+    mapping(uint256 => Info) public infos;
+    mapping(uint256 => bool) public burnedTokens;
 
     receive() external payable {}
 
@@ -27,13 +35,27 @@ contract ERC7527Agency is IERC7527Agency {
     function unwrap(address to, uint256 tokenId, bytes calldata data) external payable override {
         (address _app, Asset memory _asset,) = getStrategy();
         require(_isApprovedOrOwner(_app, msg.sender, tokenId), "LnModule: not owner");
-        IERC7527App(_app).burn(tokenId, data);
+
         uint256 _sold = IERC721Enumerable(_app).totalSupply();
         (uint256 premium, uint256 burnFee) = getUnwrapOracle(abi.encode(_sold));
-        require(tokenPremiums[tokenPremiums.length - 1] == premium, "ERC7527Agency: unwrap invalid");
-        _transfer(address(0), payable(to), premium - burnFee);
-        _transfer(address(0), _asset.feeRecipient, burnFee);
-        tokenPremiums.pop();
+
+        uint256 reward = infos[tokenId].reward;
+        delete infos[tokenId];
+        burnedTokens[tokenId] = true;
+
+        uint256 feeRecipient = burnFee * 60 / 100;
+        uint256 perTokenReward = (burnFee - feeRecipient) / _sold;
+        for (uint256 i = 0; i < _sold; i++) {
+            uint256 id = IERC721Enumerable(_app).tokenByIndex(i);
+            if (!burnedTokens[id]) {
+                infos[id].reward += perTokenReward;
+                lastTokenId = id;
+            }
+        }
+        _transfer(address(0), payable(to), premium - burnFee + reward);
+        _transfer(address(0), _asset.feeRecipient, feeRecipient);
+
+        IERC7527App(_app).burn(tokenId, data);
         emit Unwrap(to, tokenId, premium, burnFee);
     }
 
@@ -42,14 +64,29 @@ contract ERC7527Agency is IERC7527Agency {
         uint256 _sold = IERC721Enumerable(_app).totalSupply();
         (uint256 premium, uint256 mintFee) = getWrapOracle(abi.encode(_sold));
         require(msg.value >= premium + mintFee, "ERC7527Agency: insufficient funds");
-        _transfer(address(0), _asset.feeRecipient, mintFee);
+
+        uint256 feeRecipient = mintFee;
+        if (_sold>0) {
+            feeRecipient = mintFee*60/100;
+
+            uint256 perTokenReward = (mintFee - feeRecipient) / _sold;
+            for (uint256 i = 0; i < _sold; i++) {
+                uint256 currentTokenId = IERC721Enumerable(_app).tokenByIndex(i);
+                if (!burnedTokens[currentTokenId]) {
+                    infos[currentTokenId].reward += perTokenReward;
+                }
+            }
+        }
+        _transfer(address(0), _asset.feeRecipient, feeRecipient);
         if (msg.value > premium + mintFee) {
             _transfer(address(0), payable(msg.sender), msg.value - premium - mintFee);
         }
         uint256 id_ = IERC7527App(_app).mint(to, data);
         require(_sold + 1 == IERC721Enumerable(_app).totalSupply(), "ERC7527Agency: Reentrancy");
 
-        tokenPremiums.push(premium);
+        infos[id_] = Info({premium: premium, reward: 0});
+        lastTokenId = id_;
+        burnedTokens[id_] = false;
 
         emit Wrap(to, id_, premium, mintFee);
         return id_;
@@ -75,23 +112,21 @@ contract ERC7527Agency is IERC7527Agency {
     }
 
     function getUnwrapOracle(bytes memory data) public view override returns (uint256 premium, uint256 fee) {
-        require(tokenPremiums.length > 0, "ERC7527Agency: getUnwrapOracle can not allow");
-        premium = tokenPremiums[tokenPremiums.length - 1];
-        (, Asset memory _asset,) = getStrategy();
+        (address _app, Asset memory _asset,) = getStrategy();
+        require(IERC721Enumerable(_app).totalSupply() > 0, "ERC7527Agency: getUnwrapOracle totalSupply can not be zero.");
+        premium = infos[lastTokenId].premium;
         fee = premium * _asset.burnFeePercent / 10000;
     }
 
     function getWrapOracle(bytes memory data) public view override returns (uint256 premium, uint256 fee) {
-        (, Asset memory _asset,) = getStrategy();
+        (address _app, Asset memory _asset,) = getStrategy();
 
-        uint256 currentBasePremium;
-        if (tokenPremiums.length > 0) {
-            currentBasePremium = tokenPremiums[tokenPremiums.length - 1];
-        } else {
-            currentBasePremium = _asset.basePremium;
+        uint256 basePremium = _asset.basePremium;
+        if (IERC721Enumerable(_app).totalSupply() > 0) {
+            basePremium = infos[lastTokenId].premium;
         }
 
-        premium = PremiumFunction.getPremium(block.number, currentBasePremium);
+        premium = PremiumFunction.getPremium(block.number, basePremium);
         fee = premium * _asset.mintFeePercent / 10000;
     }
 
