@@ -23,7 +23,6 @@ contract ERC7527Agency is IERC7527Agency {
 
     uint256 public lastTokenId;
     mapping(uint256 => Info) public infos;
-    mapping(uint256 => bool) public burnedTokens;
 
     receive() external payable {}
 
@@ -41,13 +40,12 @@ contract ERC7527Agency is IERC7527Agency {
 
         uint256 reward = infos[tokenId].reward;
         delete infos[tokenId];
-        burnedTokens[tokenId] = true;
 
         uint256 feeRecipient = burnFee * 60 / 100;
         uint256 perTokenReward = (burnFee - feeRecipient) / _sold;
         for (uint256 i = 0; i < _sold; i++) {
             uint256 id = IERC721Enumerable(_app).tokenByIndex(i);
-            if (!burnedTokens[id]) {
+            if (infos[id].premium > 0) {
                 infos[id].reward += perTokenReward;
                 lastTokenId = id;
             }
@@ -64,6 +62,7 @@ contract ERC7527Agency is IERC7527Agency {
         uint256 _sold = IERC721Enumerable(_app).totalSupply();
         (uint256 premium, uint256 mintFee) = getWrapOracle(abi.encode(_sold));
         require(msg.value >= premium + mintFee, "ERC7527Agency: insufficient funds");
+        require(premium > 0, "ERC7527Agency: invalid premium");
 
         uint256 feeRecipient = mintFee;
         if (_sold>0) {
@@ -71,9 +70,9 @@ contract ERC7527Agency is IERC7527Agency {
 
             uint256 perTokenReward = (mintFee - feeRecipient) / _sold;
             for (uint256 i = 0; i < _sold; i++) {
-                uint256 currentTokenId = IERC721Enumerable(_app).tokenByIndex(i);
-                if (!burnedTokens[currentTokenId]) {
-                    infos[currentTokenId].reward += perTokenReward;
+                uint256 id = IERC721Enumerable(_app).tokenByIndex(i);
+                if (infos[id].premium > 0) {
+                    infos[id].reward += perTokenReward;
                 }
             }
         }
@@ -86,7 +85,6 @@ contract ERC7527Agency is IERC7527Agency {
 
         infos[id_] = Info({premium: premium, reward: 0});
         lastTokenId = id_;
-        burnedTokens[id_] = false;
 
         emit Wrap(to, id_, premium, mintFee);
         return id_;

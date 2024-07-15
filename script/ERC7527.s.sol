@@ -98,12 +98,12 @@ contract AgencyWrapScript is Script {
 
     function setUp() public {
         // 通过地址实例化 ERC7527Agency 合约
-        agency = ERC7527Agency(payable(0x147D1dB74c2878E08a6Ac648818421b3d77e90E3));
+        agency = ERC7527Agency(payable(0x137F08d546D1B5f24b6e991a09B1de9482F39259));
     }
 
     function run() public returns(uint256 totalSupply) {
         vm.startBroadcast();
-        uint256 tokenId = 1;
+        uint256 tokenId = 3;
         address to = msg.sender;
         (address _app, Asset memory _asset,) = agency.getStrategy();
         totalSupply = IERC721Enumerable(_app).totalSupply();
@@ -132,7 +132,7 @@ contract AgencyUnwrapScript is Script {
 
     function setUp() public {
         // 通过地址实例化 ERC7527Agency 合约
-        agency = ERC7527Agency(payable(0x147D1dB74c2878E08a6Ac648818421b3d77e90E3));
+        agency = ERC7527Agency(payable(0x137F08d546D1B5f24b6e991a09B1de9482F39259));
     }
 
 
