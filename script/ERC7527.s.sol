@@ -56,7 +56,7 @@ contract PremiumFunctionScript is Script {
 contract DotAgencyNFTScript is Script {
     function run() public returns (uint256 tokenId, uint256 maxPremium, address wrapAgency) {
         // The address of the deployed DotAgencyNFT contract
-        address dotAgencyNFTAddress = 0xFE5f411481565fbF70D8D33D992C78196E014b90;
+        address dotAgencyNFTAddress = 0x5081a39b8A5f0E35a8D959395a630b68B74Dd30f;
 
         // The address to mint the NFT to
         address to = msg.sender;

@@ -52,17 +52,13 @@ contract DotAgencyNFT is ERC721Enumerable, Ownable {
         }
 
         if (tokenId < 100_001) {
-            uint256 dotAgencyDirect = (wrapCoinAmount * 4) / 100;
-            uint256 dotAgencyVested = (wrapCoinAmount * 16) / 100;
-            uint256 posStakingAmount = (wrapCoinAmount * 40) / 100;
-            uint256 ethWrapLPAmount = (wrapCoinAmount * 10) / 100;
-            uint256 premiumDAOAmount = wrapCoinAmount - dotAgencyDirect - dotAgencyVested - posStakingAmount - ethWrapLPAmount;
             WrapCoin wrapCoin = WrapCoin(wrapCoinAddress);
-            wrapCoin.mint(msg.sender, dotAgencyDirect);
-            wrapCoin.mint(wrapCoinClaim, dotAgencyVested);
-            wrapCoin.mint(premiumDAOVault, premiumDAOAmount);
-            wrapCoin.mint(swapLPRewardVault, ethWrapLPAmount);
-            wrapCoin.mint(NFTStakingRewardVault, posStakingAmount);
+            wrapCoin.mint(msg.sender, wrapCoinAmount * 2_621 >> 16);
+            wrapCoin.mint(wrapCoinClaim, wrapCoinAmount * 10_485 >> 16);
+            wrapCoin.mint(premiumDAOVault, wrapCoinAmount * 19_661 >> 16);
+            wrapCoin.mint(swapLPRewardVault, wrapCoinAmount * 6_554 >> 16);
+            wrapCoin.mint(NFTStakingRewardVault, wrapCoinAmount * 26_215 >> 16);
+            wrapCoinAmount = wrapCoinAmount * 9995/10000;
         }
 
         return tokenId;
